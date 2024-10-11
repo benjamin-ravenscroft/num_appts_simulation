@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "num-appts-simulation"
+version = "0.1.0"
+description = ""
+authors = ["benjamin-ravenscroft <benjamin.ravenscroft@gmail.com>"]
+readme = "README.md"
+packages = [{include = "num_appts_simulation"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
