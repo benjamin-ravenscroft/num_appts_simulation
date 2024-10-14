@@ -36,11 +36,11 @@ class Simulation():
                 if len(clients) == 0:
                     return
 
-    def fill_empty_servers(self):
+    def fill_empty_servers(self, epoch: int, output_queue: queue.Queue):
         # count the number of empty slots across all servers
         empty_slots = sum([s.open_slots() for s in self.servers])
         # get the number of clients needed from the waitlist
-        clients = self.waitlist.get_clients(empty_slots)
+        clients = self.waitlist.get_clients(empty_slots, epoch, output_queue)
         self.fill_server_slots(clients)
 
     def run_servers(self, epoch: int, output_queue: queue.Queue):
@@ -55,7 +55,7 @@ class Simulation():
     def process_epochs(self, epochs: int, output_queue: queue.Queue):
         for epoch in range(epochs):
             self.waitlist.process_epoch(epoch)
-            self.fill_empty_servers()
+            self.fill_empty_servers(epoch, output_queue)
             self.run_servers(epoch, output_queue=output_queue)
         output_queue.put(None)
 
