@@ -62,7 +62,7 @@ class Waitlist():
         for t in prod_threads:
             t.join()
 
-    def get_clients(self, n):
+    def get_clients(self, n: int, epoch: int, output_queue: queue.Queue):
         """Get the next patient from the waitlist.
 
         Args:
@@ -79,20 +79,26 @@ class Waitlist():
                     item = self._waitlist[i].get_nowait()
                 except queue.Empty:
                     continue
-                clients.append(item)
-                n -= 1
+                if item.get_age() > self._max_ax_age:
+                    output_queue.put(item)
+                else:
+                    clients.append(item)
+                    n -= 1
                 if n == 0:
                     return clients
             return clients
         else:
-            for i in [3, 2, 1]:
-                for _ in range(n):
+            for i in [2, 1, 3]:
+                while n > 0:
                     try:
                         item = self._waitlist[i].get_nowait()
                     except queue.Empty:
                         break
-                    clients.append(item)
-                    n -= 1
+                    if item.get_age(epoch) > self._max_ax_age:
+                        output_queue.put(item.get_patient_data(epoch, True))
+                    else:
+                        clients.append(item)
+                        n -= 1
                     if n == 0:
                         return clients
             return clients
