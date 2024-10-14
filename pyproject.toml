@@ -8,7 +8,17 @@ packages = [{include = "num_appts_simulation"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+pandas = "^2.2.3"
+sqlalchemy = "^2.0.35"
+python-dotenv = "^1.0.1"
+matplotlib = "^3.9.2"
+seaborn = "^0.13.2"
+psycopg2 = "^2.9.9"
+pyarrow = "^17.0.0"
 
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core"]
