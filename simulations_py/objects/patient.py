@@ -78,13 +78,29 @@ class Patient():
         """
         return self.n_appts >= self._appts_needed
     
-    def get_patient_data(self, epoch: int, age_out: bool = False):
+    def get_patient_data(self, epoch: int, age_out: bool = False, wlist_flush: bool = False):
+        """Returns a summary of the client's service history.
+
+        Args:
+            epoch (int): epoch number at the time of the summary.
+            age_out (bool, optional): True if the patient aged-out. 
+                                      False if they were discharged for 
+                                      acheiving adequate outcomes.
+                                      np.nan if they were just flushed from the waitlist.
+                                      Defaults to False.
+            wlist_flush (bool, optional): True if the patient was flushed from the waitlist. 
+                                          Defaults to False.
+
+        Returns:
+            list: patient data.
+        """
         return [self._s_val,
                 self._age_at_ref,
                 self._ref_epoch,
                 self._ax_epoch,
                 self.n_appts,
                 epoch,
-                age_out]
+                age_out,
+                wlist_flush]
 
 

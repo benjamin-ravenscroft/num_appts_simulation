@@ -8,25 +8,25 @@ import pandas as pd
 
 class Simulation():
     def __init__(self, n_servers: int, epoch_len: int, max_age: float,
-                 priority_wlist: bool=False, patient_types: dict=None, wait_flag: bool=False):
+                 priority_wlist: bool=False, patient_types: dict=None, wait_flag: bool=False, priority_order: list=[1,2,3]):
         self._n_servers = n_servers
         self._epoch_len = epoch_len
         self._max_age = max_age
         self._priority_wlist = priority_wlist
         self._patient_types = patient_types
-        self.waitlist = self.create_waitlist(wait_flag)
+        self.waitlist = self.create_waitlist(wait_flag, priority_order)
         self.servers = self.create_servers()
         pass
     
     def create_servers(self):
         return [Server(self._epoch_len) for _ in range(self._n_servers)]
     
-    def create_waitlist(self, wait_flag):
+    def create_waitlist(self, wait_flag, priority_order):
         priorities = list(self._patient_types.keys())
         appts_needed = {k: v['appts_needed'] for k, v in self._patient_types.items()}
         arrival_rates = {k: v['arrival_rate'] for k, v in self._patient_types.items()}
         return Waitlist(priorities, arrival_rates, self._priority_wlist, 
-                        self._max_age, appts_needed, wait_flag)
+                        self._max_age, appts_needed, wait_flag, 4, priority_order)
     
     def fill_server_slots(self, clients):
         for server in self.servers:
@@ -57,13 +57,15 @@ class Simulation():
             self.waitlist.process_epoch(epoch)
             self.fill_empty_servers(epoch, output_queue)
             self.run_servers(epoch, output_queue=output_queue)
+        # flush the remaining clients from the waitlist
+        self.waitlist.flush_waitlist(epoch+1, output_queue)
         output_queue.put(None)
 
     def process_output(self, output_dir: str, output_queue: queue.Queue):
         res_list = []
         columns=['s_val', 'age_at_ref', 'ref_epoch', 
                 'ax_epoch', 'n_appts', 'dis_epoch', 
-                'age_out']
+                'age_out', 'wlist_flush']
         batch = 0
         while True:
             item = output_queue.get()

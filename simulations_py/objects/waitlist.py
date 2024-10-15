@@ -8,7 +8,7 @@ from threading import Thread
 class Waitlist():
     def __init__(self, priorities: list, arrival_rates: dict, priority_wlist: bool=False,
                  max_age: float=4, appts_needed: dict=None, wait_flag: bool=False,
-                 max_ax_age: float=3):
+                 max_ax_age: float=4, priority_order: list=[1,2,3]):
         self._priorities = priorities
         self._priority_wlist = priority_wlist
         self._waitlist = self.create_waitlist()
@@ -17,7 +17,18 @@ class Waitlist():
         self._appts_needed = appts_needed
         self._wait_flag = wait_flag
         self._max_ax_age = max_ax_age*52    # conver to weeks
+        self.priority_order = priority_order
         pass
+
+    def set_priority_order(self, priorities: list):
+        """Set the priority order for strict priority waitlist policy.
+
+        Args:
+            priorities (list): priorities in order
+        """
+        if set(priorities) != set(self._priorities):
+            raise ValueError("Invalid priority order set.")
+        self.priority_order = priorities
 
     def create_waitlist(self):
         """Create the waitlist for the simulation.
@@ -25,7 +36,10 @@ class Waitlist():
         Returns:
             dict: dictionary of waitlist queues.
         """
-        return {i: queue.Queue() for i in self._priorities}
+        if self._priority_wlist:
+            return {i: queue.Queue() for i in self._priorities}
+        else:
+            return queue.Queue()
 
     def add_clients(self, n, s_val: int, epoch: int, waitlist: queue.Queue):
         """Expand a classes waitlist by n patients for the new epoch.
@@ -56,7 +70,10 @@ class Waitlist():
         prod_threads = []
         for s_val, rate in self._arrival_rates.items():
             n = np.random.poisson(rate)
-            prod_threads.append(Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist[s_val])))
+            if self._priority_wlist:
+                prod_threads.append(Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist[s_val])))
+            else:
+                prod_threads.append(Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist)))
         for t in prod_threads:
             t.start()
         for t in prod_threads:
@@ -73,14 +90,13 @@ class Waitlist():
         """
         clients = []
         if not self._priority_wlist:
-            for _ in range(n):
-                i = np.random.choice(self._priorities)
+            while n > 0:
                 try:
-                    item = self._waitlist[i].get_nowait()
+                    item = self._waitlist.get_nowait()
                 except queue.Empty:
-                    continue
-                if item.get_age() > self._max_ax_age:
-                    output_queue.put(item)
+                    break
+                if item.get_age(epoch) > self._max_ax_age:
+                    output_queue.put(item.get_patient_data(epoch, True))
                 else:
                     clients.append(item)
                     n -= 1
@@ -88,7 +104,7 @@ class Waitlist():
                     return clients
             return clients
         else:
-            for i in [2, 1, 3]:
+            for i in self.priority_order:
                 while n > 0:
                     try:
                         item = self._waitlist[i].get_nowait()
@@ -103,14 +119,16 @@ class Waitlist():
                         return clients
             return clients
                 
-    
     def get_waitlist(self):
         """Get the waitlist.
 
         Returns:
             dict: Waitlist.
         """
-        return [self._waitlist[i] for i in self._priorities]
+        if self._priority_wlist:
+            return [self._waitlist[i] for i in self._priorities]
+        else:
+            return self._waitlist
     
     def get_waitlist_size(self):
         """Get the size of the waitlist.
@@ -118,5 +136,51 @@ class Waitlist():
         Returns:
             dict[int]: Sizes of the waitlist for each priority.
         """
-        return {i: self._waitlist[i].qsize() for i in self._priorities}
+        if self._priority_wlist:
+            return {i: self._waitlist[i].qsize() for i in self._priorities}
+        else:
+            return self._waitlist.qsize()
+    
+    def flush_waitlist_helper(self, epoch: int, output_queue: queue.Queue, priority: int=None):
+        """Flush the waitlist for a single priority.
+
+        Args:
+            epoch (int): Epoch number.
+            output_queue (queue.Queue): Queue to store the output.
+            priority (int): Priority of the waitlist to flush.
+        """
+        while True:
+            try:
+                if self._priority_wlist:
+                    item = self._waitlist[priority].get_nowait()
+                else:
+                    item = self._waitlist.get_nowait()
+            except queue.Empty:
+                break
+            else:
+                output_queue.put(item.get_patient_data(epoch,
+                                    True if item.get_age(epoch) > self._max_ax_age else np.nan,
+                                    True))
+        return
+        
+    
+    def flush_waitlist(self, epoch: int, output_queue: queue.Queue):
+        """Flush the waitlist at the end of the simulation.
+
+        Args:
+            output_queue (queue.Queue): Queue to store the output.
+        """
+        threads = []
+        if self._priority_wlist:
+            for i in self._priorities:
+                threads.append(Thread(target=self.flush_waitlist_helper, 
+                                    args=(epoch, output_queue, i)))
+        else:
+            threads.append(Thread(target=self.flush_waitlist_helper, 
+                                    args=(epoch, output_queue)))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return
 
