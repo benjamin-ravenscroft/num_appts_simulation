@@ -1,14 +1,17 @@
-from collections import deque    # use to enable processing of servers on different threads
+# use to enable processing of servers on different threads
+from collections import deque
 import queue
 from objects.patient import Patient
 import numpy as np
+import pandas as pd
 # multithreading
 from threading import Thread
 
+
 class Waitlist():
-    def __init__(self, priorities: list, arrival_rates: dict, priority_wlist: bool=False,
-                 max_age: float=4, appts_needed: dict=None, wait_flag: bool=False,
-                 max_ax_age: float=4, priority_order: list=[1,2,3]):
+    def __init__(self, priorities: list, arrival_rates: dict, priority_wlist: bool = False,
+                 max_age: float = 4, appts_needed: dict = None, wait_flag: bool = False,
+                 max_ax_age: float = 4, priority_order: list = [1, 2, 3]):
         self._priorities = priorities
         self._priority_wlist = priority_wlist
         self._waitlist = self.create_waitlist()
@@ -17,8 +20,47 @@ class Waitlist():
         self._appts_needed = appts_needed
         self._wait_flag = wait_flag
         self._max_ax_age = max_ax_age*52    # conver to weeks
-        self.priority_order = priority_order
+        self._priority_order = priority_order
+        self._modality_flag = False
+        self._modality_inter = False
         pass
+
+    def get_modality_parametrization(self, path: str, interaction=False):
+        # error checking
+        try:
+            df = pd.read_csv(path)
+        except:
+            raise Exception(f"Path '{path}' does not exist.")
+
+        if 's_val' not in df.columns and interaction:
+            raise Exception(
+                f"Parametrization data missing categories but indicated use of interaction terms.")
+
+        # assign values to dict
+        self._modality_params = {}
+        if interaction:
+            self._modality_inter = True  # flip the indicator
+            for s in df['s_val'].unique():
+                self._modality_params[s] = {
+                    'linear': df.loc[(df['s_val'] == s) &
+                                     (df['param'] == 'pct_face'), 'coef'],
+                    'quad': df.loc[(df['s_val'] == s) &
+                                   (df['param'] == 'np.power(pct_face, 2)'), 'coef']
+                }
+        else:
+            self._modality_params['linear'] = df.loc[(df['s_val'] == s) &
+                                                     (df['param'] == 'pct_face'), 'coef']
+            self._modality_params['linear'] = df.loc[(df['s_val'] == s) &
+                                                     (df['param'] == 'np.power(pct_face, 2)'), 'coef']
+        return
+
+    def get_modality_policy(self, path: str):
+        # error checking
+        try:
+            self.mod_policy = pd.read_csv(path)
+        except:
+            raise Exception(f"Path '{path}' does not exist.")
+        return
 
     def set_priority_order(self, priorities: list):
         """Set the priority order for strict priority waitlist policy.
@@ -41,6 +83,14 @@ class Waitlist():
         else:
             return queue.Queue()
 
+    def get_modality_n_appts(self, s_val: int, prop: float = 1):
+        if self._modality_inter:
+            return prop*self._modality_params[s_val]['linear'] + \
+                (prop**2)*self._modality_params[s_val]['quad']
+        else:
+            return prop*self._modality_params['linear'] + \
+                (prop**2)*self._modality_params['quad']
+
     def add_clients(self, n, s_val: int, epoch: int, waitlist: queue.Queue):
         """Expand a classes waitlist by n patients for the new epoch.
 
@@ -56,7 +106,7 @@ class Waitlist():
                         max_age=self._max_age, wait_flag=self._wait_flag)
             waitlist.put(p)
             waitlist.task_done()
-        
+
     def process_epoch(self, epoch: int):
         """Process the waitlist for the current epoch. 
         Runs at the start of each epoch and adds patients to 
@@ -71,9 +121,11 @@ class Waitlist():
         for s_val, rate in self._arrival_rates.items():
             n = np.random.poisson(rate)
             if self._priority_wlist:
-                prod_threads.append(Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist[s_val])))
+                prod_threads.append(Thread(target=self.add_clients, args=(
+                    n, s_val, epoch, self._waitlist[s_val])))
             else:
-                prod_threads.append(Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist)))
+                prod_threads.append(
+                    Thread(target=self.add_clients, args=(n, s_val, epoch, self._waitlist)))
         for t in prod_threads:
             t.start()
         for t in prod_threads:
@@ -118,7 +170,7 @@ class Waitlist():
                     if n == 0:
                         return clients
             return clients
-                
+
     def get_waitlist(self):
         """Get the waitlist.
 
@@ -129,10 +181,10 @@ class Waitlist():
             return [self._waitlist[i] for i in self._priorities]
         else:
             return self._waitlist
-    
+
     def get_waitlist_size(self):
         """Get the size of the waitlist.
-        
+
         Returns:
             dict[int]: Sizes of the waitlist for each priority.
         """
@@ -140,8 +192,8 @@ class Waitlist():
             return {i: self._waitlist[i].qsize() for i in self._priorities}
         else:
             return self._waitlist.qsize()
-    
-    def flush_waitlist_helper(self, epoch: int, output_queue: queue.Queue, priority: int=None):
+
+    def flush_waitlist_helper(self, epoch: int, output_queue: queue.Queue, priority: int = None):
         """Flush the waitlist for a single priority.
 
         Args:
@@ -159,11 +211,11 @@ class Waitlist():
                 break
             else:
                 output_queue.put(item.get_patient_data(epoch,
-                                    True if item.get_age(epoch) > self._max_ax_age else np.nan,
-                                    True))
+                                                       True if item.get_age(
+                                                           epoch) > self._max_ax_age else np.nan,
+                                                       True))
         return
-        
-    
+
     def flush_waitlist(self, epoch: int, output_queue: queue.Queue):
         """Flush the waitlist at the end of the simulation.
 
@@ -173,14 +225,13 @@ class Waitlist():
         threads = []
         if self._priority_wlist:
             for i in self._priorities:
-                threads.append(Thread(target=self.flush_waitlist_helper, 
-                                    args=(epoch, output_queue, i)))
+                threads.append(Thread(target=self.flush_waitlist_helper,
+                                      args=(epoch, output_queue, i)))
         else:
-            threads.append(Thread(target=self.flush_waitlist_helper, 
-                                    args=(epoch, output_queue)))
+            threads.append(Thread(target=self.flush_waitlist_helper,
+                                  args=(epoch, output_queue)))
         for t in threads:
             t.start()
         for t in threads:
             t.join()
         return
-
