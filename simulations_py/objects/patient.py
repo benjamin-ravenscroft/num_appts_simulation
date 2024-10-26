@@ -21,11 +21,13 @@ class Patient():
         self._ax_epoch = epoch
         if self._wait_flag:
             wait_time = (epoch - self._ref_epoch)/52
+            # hard coded coefficients for wait time effect
+            # To-Do: need to add an import method to pull from the csv file directly (or import from user)
             match self._s_val:
-                case 1: self._appts_needed += 1.562 * wait_time
-                case 2: self._appts_needed += 1.35 * wait_time
+                case 1: self._appts_needed += (0.1483 * wait_time) + (-0.06277 * (wait_time**2))
+                case 2: self._appts_needed += (2.862 * wait_time) + (-0.6642 * (wait_time ** 2))
                 case 3:
-                    self._appts_needed += 0.05 * wait_time
+                    self._appts_needed += (1.4022 * wait_time) + (-0.3463 * (wait_time ** 2))
                 case _:
                     pass
 
