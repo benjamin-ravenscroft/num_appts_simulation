@@ -1,3 +1,6 @@
+import scipy.stats as ss
+import numpy as np
+
 class Patient():
     def __init__(self, s_val: int, age: float, epoch: int, appts_needed: int, max_age: float, wait_flag: bool = False):
         self._s_val = s_val
@@ -7,10 +10,23 @@ class Patient():
         self._ax_epoch = None
         self.n_appts = 0
         self._n_face = 0  # keep track of num in-person appts
-        self._base_appts_needed = appts_needed
-        self._appts_needed = appts_needed
+        # self._base_appts_needed = appts_needed    # uncomment to use deterministic effect
+        # self._base_appts_needed = ss.norm.rvs(loc=appts_needed, scale=1)  # uncomment to use stochastic effect
+        self._base_appts_needed = self._random_integer_round(appts_needed)  # uncomment to use stochastic integer rounding effect
+        self._appts_needed = self._base_appts_needed
         self._max_age = max_age
         self._wait_flag = wait_flag
+
+    def _random_integer_round(self, x: float) -> int:
+        """Randomly rounds a float to the higher/lower integer. Does so proportionally to the decimal value.
+
+        Args:
+            x (float): float number of estimated appointments
+
+        Returns:
+            int: integer rounded number of appointments
+        """
+        return np.random.choice([np.floor(x), np.ceil(x)], p=[1 - (x % 1), x % 1])
 
     def assessment(self, epoch: int) -> None:
         """Set the epoch the patient was assessed at.
@@ -24,12 +40,16 @@ class Patient():
             # hard coded coefficients for wait time effect
             # To-Do: need to add an import method to pull from the csv file directly (or import from user)
             match self._s_val:
-                case 1: self._appts_needed += (0.1483 * wait_time) + (-0.06277 * (wait_time**2))
-                case 2: self._appts_needed += (2.862 * wait_time) + (-0.6642 * (wait_time ** 2))
+                case 1: self._base_appts_needed += (0.1483 * wait_time) + (-0.06277 * (wait_time**2))
+                case 2: self._base_appts_needed += (2.862 * wait_time) + (-0.6642 * (wait_time ** 2))
                 case 3:
-                    self._appts_needed += (1.4022 * wait_time) + (-0.3463 * (wait_time ** 2))
+                    self._base_appts_needed += (1.4022 * wait_time) + (-0.3463 * (wait_time ** 2))
                 case _:
                     pass
+            # pass base appointments to appointments needed
+            # self._appts_needed = self._base_appts_needed  # uncomment to use deterministic effect
+            # self._appts_needed = ss.norm.rvs(loc=self._base_appts_needed, scale=1)   # uncomment to use stochastic effect
+            self._appts_needed = self._random_integer_round(self._base_appts_needed)  # uncomment to use stochastic integer rounding effect
 
     def get_s_val(self) -> int:
         return self._s_val
