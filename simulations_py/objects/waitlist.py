@@ -25,43 +25,6 @@ class Waitlist():
         self._modality_inter = False
         pass
 
-    def get_modality_parametrization(self, path: str, interaction=False):
-        # error checking
-        try:
-            df = pd.read_csv(path)
-        except:
-            raise Exception(f"Path '{path}' does not exist.")
-
-        if 's_val' not in df.columns and interaction:
-            raise Exception(
-                f"Parametrization data missing categories but indicated use of interaction terms.")
-
-        # assign values to dict
-        self._modality_params = {}
-        if interaction:
-            self._modality_inter = True  # flip the indicator
-            for s in df['s_val'].unique():
-                self._modality_params[s] = {
-                    'linear': df.loc[(df['s_val'] == s) &
-                                     (df['param'] == 'pct_face'), 'coef'],
-                    'quad': df.loc[(df['s_val'] == s) &
-                                   (df['param'] == 'np.power(pct_face, 2)'), 'coef']
-                }
-        else:
-            self._modality_params['linear'] = df.loc[(df['s_val'] == s) &
-                                                     (df['param'] == 'pct_face'), 'coef']
-            self._modality_params['linear'] = df.loc[(df['s_val'] == s) &
-                                                     (df['param'] == 'np.power(pct_face, 2)'), 'coef']
-        return
-
-    def get_modality_policy(self, path: str):
-        # error checking
-        try:
-            self.mod_policy = pd.read_csv(path)
-        except:
-            raise Exception(f"Path '{path}' does not exist.")
-        return
-
     def set_priority_order(self, priorities: list):
         """Set the priority order for strict priority waitlist policy.
 
@@ -70,7 +33,7 @@ class Waitlist():
         """
         if set(priorities) != set(self._priorities):
             raise ValueError("Invalid priority order set.")
-        self.priority_order = priorities
+        self._priority_order = priorities
 
     def create_waitlist(self):
         """Create the waitlist for the simulation.
@@ -156,7 +119,7 @@ class Waitlist():
                     return clients
             return clients
         else:
-            for i in self.priority_order:
+            for i in self._priority_order:
                 while n > 0:
                     try:
                         item = self._waitlist[i].get_nowait()
