@@ -4,6 +4,8 @@ from objects.patient import Patient
 from objects.waitlist import Waitlist
 import numpy as np
 
+EPSILON = 1e-6
+
 
 class ServerException(Exception):
     def __init__(self, message):
@@ -50,7 +52,7 @@ class Server():
         """Get the queue of clients."""
         return self._clients
 
-    def cancellation_check(self, modality: int, client: Patient) -> int:
+    def cancellation_check(self, modality: int) -> int:
         # To-Do: implement functionality to vary attendance probabilities by modality, perhaps known future bookings
         """Check if the client has cancelled/no-showed their appointment, based on parameters.
 
@@ -81,10 +83,10 @@ class Server():
             int: 0 for virtual, 1 for in-person.
         """
         rand = np.random.uniform(0, 1)
-        if rand < self._modality_policy[s_val]:
-            return 0
-        else:
+        if rand <= self._modality_policy[s_val]:
             return 1
+        else:
+            return 0
 
     def _get_modality_inc(self, prop: float, s_val: int) -> float:
         if self._modality_inter:
@@ -102,20 +104,20 @@ class Server():
         The output queue is then written to a file or other output mechanism.
         """
         rem = 1  # initialize the remaining slot time to 1
-        while rem > 0 and len(self._clients) > 0:
+        while rem > (0 + EPSILON) and len(self._clients) > 0:
             c = self._clients.popleft()
             if c.check_age(epoch):
                 # add modality adjustment to number of appointments needed
+                mod = self._get_appt_modality(c.get_s_val())    # get appt modality
                 if self._modality_flag:
                     inc = self._get_modality_inc(
                         c.get_modality_prop(), c.get_s_val())
                     c.inc_appts_needed(inc)
                 # process giving appointment
                 if not self._cancellation:
-                    mod = self._get_appt_modality(c.get_s_val())
                     rem -= c.add_appt(epoch, rem, mod)
                 else:
-                    canc_ind = self.cancellation_check(c)
+                    canc_ind = self.cancellation_check(mod)
                     match canc_ind:
                         case 0:  # attended
                             rem -= c.add_appt(epoch, rem, mod)
@@ -124,7 +126,7 @@ class Server():
                         case 2:  # advanced cancellation
                             # do not give the patient an appointment,
                             # but keep appt slot for epoch available
-                            continue
+                            pass
             else:
                 output_queue.put(c.get_patient_data(epoch, age_out=True))
                 continue

@@ -42,11 +42,11 @@ class Simulation():
             df = pd.read_csv(path)
         except:
             raise Exception(f"Path '{path}' does not exist.")
-        if 's_val' not in df.columns:
+        if 'modality' not in df.columns:
             raise Exception(
-                "Attendance probability parametrization missing severity scores.")
+                "Attendance probability parametrization missing modalities.")
 
-        self._att_probs = {int(row['s_val']): {
+        self._att_probs = {int(row['modality']): {
             'att': row['att'],
             'ns': row['ns'],
             'lm': row['lm'],
@@ -95,7 +95,8 @@ class Simulation():
             raise Exception(f"Path '{path}' does not exist.")
 
         self._modality_policy = {
-            int(row['s_val']): row['pct_face'] for _, row in df.iterrows()}
+            int(row['s_val']): row['pct_face'] for _, row in df.iterrows()
+        }
         return
 
     def get_modality_policy(self):

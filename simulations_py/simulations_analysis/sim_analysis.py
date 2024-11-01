@@ -23,7 +23,7 @@ class SimulationAnalysis():
     
     def get_kpis_from_user(self):
         kpis = []
-        valid_responses = {1: 'age-out'}
+        valid_responses = {1: 'age-out', 2: 'wait_time_mean', 3: 'wait_time_25', 4: 'wait_time_75'}
         print("Please select the KPIs you would like to analyze:")
         print("1. Age-out rate")
         while True:
@@ -60,6 +60,21 @@ class SimulationAnalysis():
                            {'age_out': 'sum',
                             'age_at_ref_yrs': 'mean',
                             'age_at_discharge_yrs': 'mean'})
+            return res
+        elif kpi == "wait_time_mean":
+            res = df.groupby('s_val', 
+                       as_index=False).agg(
+                           {'ref_to_ax_yrs': 'mean'})
+            return res
+        elif kpi == "wait_time_25":
+            res = df.groupby('s_val', 
+                       as_index=False).agg(
+                           {'ref_to_ax_yrs': lambda x: np.percentile(x, 25)})
+            return res
+        elif kpi == "wait_time_75":
+            res = df.groupby('s_val', 
+                       as_index=False).agg(
+                           {'ref_to_ax_yrs': lambda x: np.percentile(x, 75)})
             return res
         else:
             raise ValueError("KPI not yet implemented.")

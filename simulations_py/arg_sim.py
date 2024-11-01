@@ -81,6 +81,9 @@ if __name__ == "__main__":
     parser.add_argument("--wait_flag", "-w", type=bool, default=False, help="Flag for wait time effect.")
     parser.add_argument("--priority_wlist", "-p", type=bool, default=False, help="Flag for priority waitlist.")
     parser.add_argument("--priority_order", "-po", nargs='+', default=[1,2,3], help="Priority order for waitlist.")
+    parser.add_argument("--sim_name", "-sn", type=str, default="arg_sim", help="Name of the simulation.")
+    parser.add_argument("--pct_face", "-pf", nargs='+', type=float, default=[1.0, 1.0, 1.0], help="Percentage of face-to-face treatment for each class.")
+    parser.add_argument("--cancel", "-c", type=bool, default=False, help="Flag for cancellation behaviour.")
     # parser.add_argument("--output_path", "-o", type=str, required=True,
     #                     default="../sim_results/arg_sim.xlsx", help="Output path for simulation results.")
     args = parser.parse_args()
@@ -105,8 +108,15 @@ if __name__ == "__main__":
     print(f"priority_wlist: {priority_wlist}")
     print(f"priority_order: {priority_order}")
 
+    # modify the modality policy
+    print(args.pct_face)
+    # mod_df = pd.DataFrame({'s_val': [1, 2, 3], 'pct_face': [float(i) for i in args.pct_face]})
+    mod_df = pd.DataFrame(np.array([[1, 2, 3],
+                           [float(i) for i in args.pct_face]]).T, columns=['s_val', 'pct_face'])
+    mod_df.to_csv("./parametrization_data/pct_face_policy.csv", index=False)
+
     # define sim name
-    sim_name = "arg_sim"
+    sim_name = args.sim_name
 
     # create json file with simulation parameters and directories
     if not os.path.exists("../sim_results/" + sim_name):
@@ -128,8 +138,8 @@ if __name__ == "__main__":
         print(f"Running simulation {i}")
         start = time()
         # initialize the simulation
-        sim = Simulation(appts_per_week, 4, 52*4.5, priority_wlist, patient_types, wait_flag=wait_flag,
-                         priority_order=priority_order)
+        sim = Simulation(appts_per_week, 4, 52*4.5, priority_wlist=priority_wlist, patient_types=patient_types, wait_flag=wait_flag,
+                         priority_order=priority_order, cancellation=args.cancel)
         # create output directory
         if not os.path.exists(f"../sim_results/{sim_name}/run_{i}.parquet"):
             os.system(f"mkdir \"../sim_results/{sim_name}/run_{i}.parquet\"")
@@ -140,11 +150,16 @@ if __name__ == "__main__":
             path="./parametrization_data/pct_face_rmst.csv", interaction=False
         )
         sim.fetch_modality_policy(
-            path="./parametrization_data/pct_face_policy.csv"
+            path="./parametrization_data/pct_face_policy.csv"   # set to 100% in-person treatment for now
         )
-        sim.fetch_att_probs(
-            path="./parametrization_data/att_probs_no_canc.csv"
-        )
+        if args.cancel:
+            sim.fetch_att_probs(
+                path="./parametrization_data/att_probs.csv" # set to cancellation behaviour
+            )
+        else:
+            sim.fetch_att_probs(
+                path="./parametrization_data/att_probs_no_canc.csv" # set to no cancellation behaviour for now
+            )
         # run simulation
         sim.run_simulation(epochs, output_dir)
         end = time()
@@ -157,6 +172,10 @@ if __name__ == "__main__":
     summary['wait_flag'] = wait_flag
     summary['priority_wlist'] = priority_wlist
     summary['priority_order'] = "".join([str(i) for i in priority_order])
+    summary['cancel'] = args.cancel
+    # fetch the in-person treatment policy and merge onto the summary
+    modality_policy = pd.read_csv("./parametrization_data/pct_face_policy.csv")
+    summary = pd.merge(left=summary, right=modality_policy, on='s_val', how='left')
     # read the current excel file and append the new summary
     curr_summary = pd.read_excel(OUTPUT_PATH, sheet_name='age_out')
     summary = pd.concat([curr_summary, summary])

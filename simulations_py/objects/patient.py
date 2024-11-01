@@ -11,8 +11,8 @@ class Patient():
         self.n_appts = 0
         self._n_face = 0  # keep track of num in-person appts
         # self._base_appts_needed = appts_needed    # uncomment to use deterministic effect
-        # self._base_appts_needed = ss.norm.rvs(loc=appts_needed, scale=1)  # uncomment to use stochastic effect
-        self._base_appts_needed = self._random_integer_round(appts_needed)  # uncomment to use stochastic integer rounding effect
+        self._base_appts_needed = ss.norm.rvs(loc=appts_needed, scale=1)  # uncomment to use stochastic effect
+        # self._base_appts_needed = self._random_integer_round(appts_needed)  # uncomment to use stochastic integer rounding effect
         self._appts_needed = self._base_appts_needed
         self._max_age = max_age
         self._wait_flag = wait_flag
@@ -48,8 +48,8 @@ class Patient():
                     pass
             # pass base appointments to appointments needed
             # self._appts_needed = self._base_appts_needed  # uncomment to use deterministic effect
-            # self._appts_needed = ss.norm.rvs(loc=self._base_appts_needed, scale=1)   # uncomment to use stochastic effect
-            self._appts_needed = self._random_integer_round(self._base_appts_needed)  # uncomment to use stochastic integer rounding effect
+            self._appts_needed = ss.norm.rvs(loc=self._base_appts_needed, scale=1)   # uncomment to use stochastic effect
+            # self._appts_needed = self._random_integer_round(self._base_appts_needed)  # uncomment to use stochastic integer rounding effect
 
     def get_s_val(self) -> int:
         return self._s_val
@@ -84,7 +84,8 @@ class Patient():
                 return self._n_face/self.n_appts
 
     def inc_appts_needed(self, inc: int = 0) -> None:
-        self._appts_needed = self._base_appts_needed + inc
+        self._appts_needed = ss.norm.rvs(loc=self._base_appts_needed + inc, scale=1)  # uncomment to use stochastic effect
+        # self._appts_needed = self._random_integer_round(self._base_appts_needed + inc)    # uncomment to use integer rounding effect
 
     def add_appt(self, epoch: int, slot_time: float, modality: int = 1) -> float:
         """Incremement the number of appointments the patient has had
