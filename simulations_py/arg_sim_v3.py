@@ -9,7 +9,6 @@ import numpy as np
 from dotenv import load_dotenv
 load_dotenv()
 
-
 def get_appts_per_week(utilization: float, patient_types: dict):
     appts_per_week = int(np.round(np.sum([v['arrival_rate'] * v['appts_needed'] for v in patient_types.values()])/utilization))
     # print(f"The approximate number of appointments per week with a utilization of {utilization} is {appts_per_week}")
@@ -23,6 +22,7 @@ def get_kpi_run_helper(df: pd.DataFrame, kpi: int):
                         'age_at_ref_yrs': 'mean',
                         'age_at_discharge_yrs': 'mean'})
         res.rename(columns={'age_out': 'stat'}, inplace=True)
+        res.loc[res.shape[0]] = [0, df['age_out'].sum()/df['age_out'].count(), df['age_at_ref_yrs'].mean(), df['age_at_discharge_yrs'].mean()]
         return res
     elif kpi == 2:
         res = df.groupby('s_val', 
@@ -63,7 +63,7 @@ def get_kpi_summary_helper(res: pd.DataFrame, n_runs: int):
     return summary
 
 def get_kpi_summary(dir: str, kpi: int, n_runs: int, burn_in=True):
-    valid_responses = {1: 'age-out', 2: 'wait_time_mean', 3: 'wait_time_25', 4: 'wait_time_75'}
+    valid_responses = {1: 'age_out', 2: 'wait_time_mean', 3: 'wait_time_25', 4: 'wait_time_75'}
     results = pd.DataFrame()
     for run in range(n_runs):
         results = pd.concat([results, get_kpi_run(dir, run, kpi, burn_in)])
@@ -83,25 +83,36 @@ if __name__ == "__main__":
     parser.add_argument("--sim_name", "-sn", type=str, default="arg_sim", help="Name of the simulation.")
     parser.add_argument("--pct_face", "-pf", nargs='+', type=float, default=[1.0, 1.0, 1.0], help="Percentage of face-to-face treatment for each class.")
     parser.add_argument("--cancel", "-c", type=bool, default=False, help="Flag for cancellation behaviour.")
+    parser.add_argument("--modality_effects", "-me", type=float, nargs="+", default=[0.0, 0.0, 0.0], help="Modality effects for each class.")
     parser.add_argument("--output_path", "-o", type=str, required=True,
-                        default="../sim_summary/arg_sim.xlsx", help="Output path for simulation results.")
+                        default="../sim_summary/arg_sim", help="Output path for simulation results.")
     args = parser.parse_args()
 
     run_index = args.run
 
     # check if the output path exists
-    if not os.path.exists(args.output_path):
-        print("Output path does not exist. Generating file.")
-        summary = pd.DataFrame(columns=['s_val', 'mean', 'std', 'sem', 'n_runs', 'utilization', 'wait'])
-        summary.to_excel(args.output_path, sheet_name='age_out', index=False)
-    output_path = args.output_path
+    output_path = args.output_path + f"_{run_index}.parquet"
 
     # define the client types
-    patient_types = {1: {'arrival_rate': 4.7, 'appts_needed': 7.24},
-                 2: {'arrival_rate': 13.2, 'appts_needed': 10.28},
-                 3: {'arrival_rate': 6.0, 'appts_needed': 12.72}}
+    patient_types = {1: {'arrival_rate': 5, 'appts_needed': 7},
+                 2: {'arrival_rate': 13, 'appts_needed': 10},
+                 3: {'arrival_rate': 6, 'appts_needed': 13}}
     # get the appts per week from user passed utilization
     appts_per_week = get_appts_per_week(args.utilization, patient_types)
+
+    # set the modality effects
+    # change in number of appointments is proportional to the baseline needed for the class
+    modality_effects = {}
+    for i, j in zip([1,2,3], args.modality_effects):
+        modality_effects[i] = {
+            'linear': patient_types[i]['appts_needed']*j,
+            'quad': 0
+        }
+
+    # set the modality policy
+    pct_face_policy = {
+        int(i): float(j) for i, j in zip([1,2,3], args.pct_face)
+    }
 
     # set the number of runs
     n_runs = args.n_runs
@@ -114,50 +125,29 @@ if __name__ == "__main__":
 
     print(f"Starting simulation run {run_index}")
 
-    # modify the modality policy
-    # print(args.pct_face)
-    # mod_df = pd.DataFrame({'s_val': [1, 2, 3], 'pct_face': [float(i) for i in args.pct_face]})
-    mod_df = pd.DataFrame(np.array([[1, 2, 3],
-                           [float(i) for i in args.pct_face]]).T, columns=['s_val', 'pct_face'])
-    mod_df.to_csv("./parametrization_data/pct_face_policy.csv", index=False)
-
     # define sim name
-    sim_name = args.sim_name
+    sim_name = args.sim_name + f"_{run_index}"
 
     # create json file with simulation parameters and directories
-    if not os.path.exists("../sim_results/" + sim_name):
-        os.makedirs("../sim_results/" + sim_name)
-    
-    json_dict = {"sim_name": sim_name,
-                 "patient_types": patient_types,
-                 "n_runs": n_runs,
-                 "epochs": epochs,
-                 "appts_per_week": appts_per_week,
-                 "utilization": args.utilization,
-                 "wait_flag": wait_flag,
-                 "priority_wlist": priority_wlist}
-    with open(f"../sim_results/{sim_name}/parametrization.json", "w") as f:
-        json.dump(json_dict, f)
+    if not os.path.exists("../mass_simulations/sim_results/" + sim_name):
+        os.makedirs("../mass_simulations/sim_results/" + sim_name)
     
     # run simulation
     for i in range(n_runs):
         # print(f"Running simulation {i}")
         start = time()
         # initialize the simulation
-        sim = Simulation(appts_per_week, 4, 52*4.5, priority_wlist=priority_wlist, patient_types=patient_types, wait_flag=wait_flag,
+        sim = Simulation(appts_per_week, 4, 52*4.5, priority_wlist=priority_wlist, patient_types=patient_types, 
+                         wait_flag=wait_flag, wait_inter_flag=False,
                          priority_order=priority_order, cancellation=args.cancel)
         # create output directory
-        if not os.path.exists(f"../sim_results/{sim_name}/run_{i}.parquet"):
-            os.system(f"mkdir \"../sim_results/{sim_name}/run_{i}.parquet\"")
-        output_dir = f"../sim_results/{sim_name}/run_{i}.parquet"
+        if not os.path.exists(f"../mass_simulations/sim_results/{sim_name}/run_{i}.parquet"):
+            os.system(f"mkdir \"../mass_simulations/sim_results/{sim_name}/run_{i}.parquet\"")
+        output_dir = f"../mass_simulations/sim_results/{sim_name}/run_{i}.parquet"
         os.system(f"rm -rf {output_dir}/*")
         # load parameters
-        sim.fetch_modality_parametrization(
-            path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/pct_face_rmst.csv", interaction=False
-        )
-        sim.fetch_modality_policy(
-            path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/pct_face_policy.csv"   # set to 100% in-person treatment for now
-        )
+        sim.set_modality_parametrization(modality_effects)
+        sim.set_modality_policy(pct_face_policy)
         if args.cancel:
             sim.fetch_att_probs(
                 path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/att_probs.csv" # set to cancellation behaviour
@@ -173,23 +163,28 @@ if __name__ == "__main__":
 
     # save simulation results to multisheet excel file
     # get the summary and add parametrization
-    summary = get_kpi_summary(f"/home/benja/num_appts_simulation/sim_results/{sim_name}", kpi=1, n_runs=n_runs)
+    summary = get_kpi_summary(f"../mass_simulations/sim_results/{sim_name}", kpi=1, n_runs=n_runs)
+    wait_summary = get_kpi_summary(f"../mass_simulations/sim_results/{sim_name}", kpi=2, n_runs=n_runs)
+    wait_summary = wait_summary.rename(columns={'mean': 'wait_time_mean', 
+                                                'std': 'wait_time_std', 'sem': 
+                                                'wait_time_sem', 
+                                                'n_runs': 'wait_time_n_runs'})
+    summary = pd.merge(summary, wait_summary, on='s_val', how='left')
     summary['utilization'] = args.utilization
     summary['wait_flag'] = wait_flag
     summary['priority_wlist'] = priority_wlist
     summary['priority_order'] = "".join([str(i) for i in priority_order])
     summary['cancel'] = args.cancel
     summary['run'] = run_index
-    # fetch the in-person treatment policy and merge onto the summary
-    modality_policy = pd.read_csv("./parametrization_data/pct_face_policy.csv")
-    summary = pd.merge(left=summary, right=modality_policy, on='s_val', how='left')
-    # read the current excel file and append the new summary
-    curr_summary = pd.read_excel(output_path, sheet_name='age_out')
-    summary = pd.concat([curr_summary, summary])
+    summary['pct_face'] = np.nan
+    summary['baseline_appts'] = np.nan
+    summary['modality_effects'] = np.nan
+    for i, j in enumerate([1,2,3]):
+        summary.loc[summary['s_val'] == j, 'pct_face'] = args.pct_face[i]
+        summary.loc[summary['s_val'] == j, 'baseline_appts'] = patient_types[j]['appts_needed']
+        summary.loc[summary['s_val'] == j, 'modality_effects'] = args.modality_effects[i]
+
     # save the summary to the excel file
-    with pd.ExcelWriter(output_path) as writer:
-        summary.to_excel(writer, sheet_name='age_out', index=False)
-
+    summary.to_parquet(output_path, index=False)
+    
     print(f"Simulation run {run_index} complete.")
-        
-

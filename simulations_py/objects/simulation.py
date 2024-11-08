@@ -9,7 +9,8 @@ import pandas as pd
 
 class Simulation():
     def __init__(self, n_servers: int, epoch_len: int, max_age: float,
-                 priority_wlist: bool = False, patient_types: dict = None, wait_flag: bool = False, priority_order: list = [1, 2, 3],
+                 priority_wlist: bool = False, patient_types: dict = None, wait_flag: bool = False,
+                 wait_inter_flag: bool = False, priority_order: list = [1, 2, 3],
                  att_probs: dict = {},
                  cancellation: bool = False):
         self._n_servers = n_servers
@@ -19,7 +20,7 @@ class Simulation():
         self._patient_types = patient_types
         self._att_probs = att_probs
         self._cancellation = cancellation
-        self.waitlist = self.create_waitlist(wait_flag, priority_order)
+        self.waitlist = self.create_waitlist(wait_flag, wait_inter_flag, priority_order)
         # self.servers = self.create_servers()
         # modality effect indicators
         self._modality_flag = False
@@ -56,6 +57,13 @@ class Simulation():
     def get_att_probs(self):
         return self._att_probs
 
+    def set_modality_parametrization(self, params: dict, interaction=False):
+        if interaction:
+            self._modality_inter = True
+            self._modality_params = params
+        else:
+            self._modality_params = params
+
     def fetch_modality_parametrization(self, path: str, interaction=False):
         # error checking
         try:
@@ -87,6 +95,9 @@ class Simulation():
     def get_modality_parametrization(self):
         return self._modality_params
 
+    def set_modality_policy(self, policy: dict):
+        self._modality_policy = policy
+
     def fetch_modality_policy(self, path: str):
         # error checking
         try:
@@ -107,14 +118,15 @@ class Simulation():
                        self._modality_params, self._modality_policy,
                        self._modality_flag, self._modality_inter) for _ in range(self._n_servers)]
 
-    def create_waitlist(self, wait_flag, priority_order):
+    def create_waitlist(self, wait_flag, wait_inter_flag, priority_order):
         priorities = list(self._patient_types.keys())
         appts_needed = {k: v['appts_needed']
                         for k, v in self._patient_types.items()}
         arrival_rates = {k: v['arrival_rate']
                          for k, v in self._patient_types.items()}
         return Waitlist(priorities, arrival_rates, self._priority_wlist,
-                        self._max_age, appts_needed, wait_flag, 4, priority_order)
+                        self._max_age, appts_needed, wait_flag, wait_inter_flag,
+                        4, priority_order)
 
     def fill_server_slots(self, clients):
         for server in self.servers:
@@ -176,11 +188,11 @@ class Simulation():
         # create the servers
         self.servers = self.create_servers()
         output_queue = queue.Queue()
-        print("Simulation starting...")
+        # print("Simulation starting...")
         threads = [Thread(target=self.process_epochs, args=(n_epochs, output_queue)),
                    Thread(target=self.process_output, args=(output_dir, output_queue))]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        print("Simulation complete.")
+        # print("Simulation complete.")

@@ -11,6 +11,7 @@ from threading import Thread
 class Waitlist():
     def __init__(self, priorities: list, arrival_rates: dict, priority_wlist: bool = False,
                  max_age: float = 4, appts_needed: dict = None, wait_flag: bool = False,
+                 wait_inter_flag: bool = False,
                  max_ax_age: float = 4, priority_order: list = [1, 2, 3]):
         self._priorities = priorities
         self._priority_wlist = priority_wlist
@@ -19,6 +20,7 @@ class Waitlist():
         self._max_age = max_age
         self._appts_needed = appts_needed
         self._wait_flag = wait_flag
+        self._wait_inter_flag = wait_inter_flag
         self._max_ax_age = max_ax_age*52    # conver to weeks
         self._priority_order = priority_order
         self._modality_flag = False
@@ -46,13 +48,14 @@ class Waitlist():
         else:
             return queue.Queue()
 
-    def get_modality_n_appts(self, s_val: int, prop: float = 1):
-        if self._modality_inter:
-            return prop*self._modality_params[s_val]['linear'] + \
-                (prop**2)*self._modality_params[s_val]['quad']
-        else:
-            return prop*self._modality_params['linear'] + \
-                (prop**2)*self._modality_params['quad']
+    # DEPRECATED
+    # def get_modality_n_appts(self, s_val: int, prop: float = 1):
+    #     if self._modality_inter:
+    #         return prop*self._modality_params[s_val]['linear'] + \
+    #             (prop**2)*self._modality_params[s_val]['quad']
+    #     else:
+    #         return prop*self._modality_params['linear'] + \
+    #             (prop**2)*self._modality_params['quad']
 
     def add_clients(self, n, s_val: int, epoch: int, waitlist: queue.Queue):
         """Expand a classes waitlist by n patients for the new epoch.
@@ -64,9 +67,10 @@ class Waitlist():
             waitlist (queue.Queue): priority score's repsective queue
         """
         for _ in range(n):
-            p = Patient(s_val, np.random.random()*130 + 26, epoch,
+            p = Patient(s_val, min(max(0, np.random.normal(78)), 156), epoch,
                         appts_needed=self._appts_needed[s_val],
-                        max_age=self._max_age, wait_flag=self._wait_flag)
+                        max_age=self._max_age, wait_flag=self._wait_flag,
+                        wait_inter_flag=self._wait_inter_flag)
             waitlist.put(p)
             waitlist.task_done()
 

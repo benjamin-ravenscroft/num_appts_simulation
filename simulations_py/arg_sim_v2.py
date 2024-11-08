@@ -23,6 +23,7 @@ def get_kpi_run_helper(df: pd.DataFrame, kpi: int):
                         'age_at_ref_yrs': 'mean',
                         'age_at_discharge_yrs': 'mean'})
         res.rename(columns={'age_out': 'stat'}, inplace=True)
+        res.loc[res.shape[0]] = [0, df['age_out'].sum()/df['age_out'].count(), df['age_at_ref_yrs'].mean(), df['age_at_discharge_yrs'].mean()]
         return res
     elif kpi == 2:
         res = df.groupby('s_val', 
@@ -63,7 +64,7 @@ def get_kpi_summary_helper(res: pd.DataFrame, n_runs: int):
     return summary
 
 def get_kpi_summary(dir: str, kpi: int, n_runs: int, burn_in=True):
-    valid_responses = {1: 'age-out', 2: 'wait_time_mean', 3: 'wait_time_25', 4: 'wait_time_75'}
+    valid_responses = {1: 'age_out', 2: 'wait_time_mean', 3: 'wait_time_25', 4: 'wait_time_75'}
     results = pd.DataFrame()
     for run in range(n_runs):
         results = pd.concat([results, get_kpi_run(dir, run, kpi, burn_in)])
@@ -84,22 +85,18 @@ if __name__ == "__main__":
     parser.add_argument("--pct_face", "-pf", nargs='+', type=float, default=[1.0, 1.0, 1.0], help="Percentage of face-to-face treatment for each class.")
     parser.add_argument("--cancel", "-c", type=bool, default=False, help="Flag for cancellation behaviour.")
     parser.add_argument("--output_path", "-o", type=str, required=True,
-                        default="../sim_summary/arg_sim.xlsx", help="Output path for simulation results.")
+                        default="../sim_summary/arg_sim", help="Output path for simulation results.")
     args = parser.parse_args()
 
     run_index = args.run
 
     # check if the output path exists
-    if not os.path.exists(args.output_path):
-        print("Output path does not exist. Generating file.")
-        summary = pd.DataFrame(columns=['s_val', 'mean', 'std', 'sem', 'n_runs', 'utilization', 'wait'])
-        summary.to_excel(args.output_path, sheet_name='age_out', index=False)
-    output_path = args.output_path
+    output_path = args.output_path + f"_{run_index}.parquet"
 
     # define the client types
-    patient_types = {1: {'arrival_rate': 4.7, 'appts_needed': 7.24},
-                 2: {'arrival_rate': 13.2, 'appts_needed': 10.28},
-                 3: {'arrival_rate': 6.0, 'appts_needed': 12.72}}
+    patient_types = {1: {'arrival_rate': 5, 'appts_needed': 7},
+                 2: {'arrival_rate': 13, 'appts_needed': 10},
+                 3: {'arrival_rate': 6, 'appts_needed': 13}}
     # get the appts per week from user passed utilization
     appts_per_week = get_appts_per_week(args.utilization, patient_types)
 
@@ -117,12 +114,15 @@ if __name__ == "__main__":
     # modify the modality policy
     # print(args.pct_face)
     # mod_df = pd.DataFrame({'s_val': [1, 2, 3], 'pct_face': [float(i) for i in args.pct_face]})
-    mod_df = pd.DataFrame(np.array([[1, 2, 3],
-                           [float(i) for i in args.pct_face]]).T, columns=['s_val', 'pct_face'])
-    mod_df.to_csv("./parametrization_data/pct_face_policy.csv", index=False)
+    # mod_df = pd.DataFrame(np.array([[1, 2, 3],
+    #                        [float(i) for i in args.pct_face]]).T, columns=['s_val', 'pct_face'])
+    # mod_df.to_csv("./parametrization_data/pct_face_policy.csv", index=False)
+    pct_face_policy = {
+        int(i): float(j) for i, j in zip([1,2,3], args.pct_face)
+    }
 
     # define sim name
-    sim_name = args.sim_name
+    sim_name = args.sim_name + f"_{run_index}"
 
     # create json file with simulation parameters and directories
     if not os.path.exists("../sim_results/" + sim_name):
@@ -155,9 +155,10 @@ if __name__ == "__main__":
         sim.fetch_modality_parametrization(
             path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/pct_face_rmst.csv", interaction=False
         )
-        sim.fetch_modality_policy(
-            path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/pct_face_policy.csv"   # set to 100% in-person treatment for now
-        )
+        # sim.fetch_modality_policy(
+        #     path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/pct_face_policy.csv"   # set to 100% in-person treatment for now
+        # )
+        sim.set_modality_policy(pct_face_policy)
         if args.cancel:
             sim.fetch_att_probs(
                 path="/home/benja/num_appts_simulation/simulations_py/parametrization_data/att_probs.csv" # set to cancellation behaviour
@@ -181,15 +182,12 @@ if __name__ == "__main__":
     summary['cancel'] = args.cancel
     summary['run'] = run_index
     # fetch the in-person treatment policy and merge onto the summary
-    modality_policy = pd.read_csv("./parametrization_data/pct_face_policy.csv")
-    summary = pd.merge(left=summary, right=modality_policy, on='s_val', how='left')
-    # read the current excel file and append the new summary
-    curr_summary = pd.read_excel(output_path, sheet_name='age_out')
-    summary = pd.concat([curr_summary, summary])
+    # modality_policy = pd.read_csv("./parametrization_data/pct_face_policy.csv")
+    # summary = pd.merge(left=summary, right=modality_policy, on='s_val', how='left')
+    summary['pct_face'] = np.nan
+    for i, j in enumerate([1,2,3]):
+        summary.loc[summary['s_val'] == j, 'pct_face'] = args.pct_face[i]
     # save the summary to the excel file
-    with pd.ExcelWriter(output_path) as writer:
-        summary.to_excel(writer, sheet_name='age_out', index=False)
-
+    summary.to_parquet(output_path, index=False)
+    
     print(f"Simulation run {run_index} complete.")
-        
-
